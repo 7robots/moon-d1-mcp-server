@@ -14,13 +14,20 @@ import httpx
 from fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# Constants (configurable via environment variables)
-CLOUDFLARE_ID = os.environ.get("CLOUDFLARE_ID", "")
-CLOUDFLARE_TOKEN = os.environ.get("CLOUDFLARE_TOKEN", "")
-DATABASE_ID = os.environ.get("DATABASE_ID", "")
-
-# D1 API endpoint
-D1_API_URL = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ID}/d1/database/{DATABASE_ID}/query"
+def _get_d1_config():
+    """Get D1 API configuration. Reads env vars at call time for deployment flexibility."""
+    cloudflare_id = os.environ.get("CLOUDFLARE_ID", "")
+    cloudflare_token = os.environ.get("CLOUDFLARE_TOKEN", "")
+    database_id = os.environ.get("DATABASE_ID", "")
+    missing = [name for name, val in [
+        ("CLOUDFLARE_ID", cloudflare_id),
+        ("CLOUDFLARE_TOKEN", cloudflare_token),
+        ("DATABASE_ID", database_id),
+    ] if not val]
+    if missing:
+        raise ValueError(f"Missing environment variables: {', '.join(missing)}")
+    api_url = f"https://api.cloudflare.com/client/v4/accounts/{cloudflare_id}/d1/database/{database_id}/query"
+    return api_url, cloudflare_token
 
 # Initialize MCP server
 mcp = FastMCP(
@@ -142,8 +149,9 @@ class GetTypesInput(BaseModel):
 # Utility functions
 async def execute_d1_query(sql: str, params: List[Any] = None) -> Dict[str, Any]:
     """Execute a SQL query against the D1 database."""
+    api_url, token = _get_d1_config()
     headers = {
-        "Authorization": f"Bearer {CLOUDFLARE_TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
     payload = {"sql": sql}
@@ -152,7 +160,7 @@ async def execute_d1_query(sql: str, params: List[Any] = None) -> Dict[str, Any]
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            D1_API_URL,
+            api_url,
             headers=headers,
             json=payload,
             timeout=30.0,
@@ -193,11 +201,12 @@ def format_feature_markdown(feature: Dict[str, Any]) -> str:
 def handle_api_error(e: Exception) -> str:
     """Format API errors consistently."""
     if isinstance(e, httpx.HTTPStatusError):
+        body = e.response.text[:200] if e.response.text else ""
         if e.response.status_code == 401:
             return "Error: Authentication failed. Check CLOUDFLARE_TOKEN."
         elif e.response.status_code == 404:
             return "Error: Database not found. Check DATABASE_ID."
-        return f"Error: API request failed with status {e.response.status_code}"
+        return f"Error: API request failed with status {e.response.status_code}: {body}"
     elif isinstance(e, httpx.TimeoutException):
         return "Error: Request timed out. Please try again."
     return f"Error: {type(e).__name__}: {e}"
