@@ -8,10 +8,12 @@ This server provides tools to interact with a collection of lunar surface featur
 import json
 import os
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from fastmcp import FastMCP
+from fastmcp.server.providers.skills import SkillProvider
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 def _get_d1_config():
@@ -34,6 +36,9 @@ mcp = FastMCP(
     "moon-d1-mcp",
     instructions="MCP server for exploring lunar selenography data. Use these tools to search, filter, and analyze features on the Moon's surface including craters, maria, mountains, and more.",
 )
+
+# Add lunar selenography skill (database schema and query guidance)
+mcp.add_provider(SkillProvider(Path(__file__).parent / "skills" / "lunar-selenography"))
 
 
 # Enums
@@ -551,7 +556,5 @@ async def moon_get_stats(response_format: str = "json") -> str:
 
 
 if __name__ == "__main__":
-    # HTTP transport for fastmcp.cloud
-    host = os.getenv("MCP_HOST", "0.0.0.0")
-    port = int(os.getenv("MCP_PORT", "8000"))
-    mcp.run(transport="http", host=host, port=port)
+    # Default run; use `fastmcp run` with fastmcp.json for configured deployment
+    mcp.run(transport="http", host="0.0.0.0", port=8000)
