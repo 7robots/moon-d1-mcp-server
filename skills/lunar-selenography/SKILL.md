@@ -4,7 +4,7 @@ description: Query and explore lunar surface features from the selenography data
 
 # Lunar Selenography Database
 
-This MCP server provides access to a comprehensive database of ~1,500 lunar surface features stored in a Cloudflare D1 (SQLite-compatible) database.
+This MCP server provides access to a comprehensive database of 9146 lunar surface features stored in a Cloudflare D1 (SQLite-compatible) database.
 
 ## Database Schema
 
