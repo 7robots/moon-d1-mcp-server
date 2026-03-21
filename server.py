@@ -51,8 +51,8 @@ def _create_auth():
 
     return OIDCProxy(
         config_url=f"{okta_issuer}/.well-known/openid-configuration",
-        upstream_client_id=os.environ.get("OKTA_CLIENT_ID", "0oa117lpjfh5KAyzD698"),
-        upstream_client_secret=okta_client_secret,
+        client_id=os.environ.get("OKTA_CLIENT_ID", "0oa117lpjfh5KAyzD698"),
+        client_secret=okta_client_secret,
         base_url=base_url,
         jwt_signing_key=jwt_signing_key or None,
         allowed_client_redirect_uris=[
