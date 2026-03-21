@@ -8,6 +8,10 @@ This server provides tools to interact with a collection of lunar surface featur
 import json
 import os
 from enum import Enum
+
+from dotenv import load_dotenv
+
+load_dotenv()
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -55,6 +59,8 @@ def _create_auth():
         client_secret=okta_client_secret,
         base_url=base_url,
         jwt_signing_key=jwt_signing_key or None,
+        enable_cimd=False,
+        extra_authorize_params={"scope": "openid profile email"},
         allowed_client_redirect_uris=[
             "http://localhost:*",
             "http://127.0.0.1:*",
@@ -589,5 +595,7 @@ async def moon_get_stats(response_format: str = "json") -> str:
 
 
 if __name__ == "__main__":
-    # Default run; use `fastmcp run` with fastmcp.json for configured deployment
-    mcp.run(transport="http", host="0.0.0.0", port=8000)
+    import uvicorn
+
+    app = mcp.http_app(transport="streamable-http", stateless_http=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
