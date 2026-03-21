@@ -16,6 +16,7 @@ from fastmcp import FastMCP
 from fastmcp.server.providers.skills import SkillProvider
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+
 def _get_d1_config():
     """Get D1 API configuration. Reads env vars at call time for deployment flexibility."""
     cloudflare_id = os.environ.get("CLOUDFLARE_ID", "")
@@ -31,10 +32,42 @@ def _get_d1_config():
     api_url = f"https://api.cloudflare.com/client/v4/accounts/{cloudflare_id}/d1/database/{database_id}/query"
     return api_url, cloudflare_token
 
+
+# ---------------------------------------------------------------------------
+# Okta OIDC authentication (optional — enabled when OKTA_CLIENT_SECRET is set)
+# ---------------------------------------------------------------------------
+def _create_auth():
+    """Build OIDCProxy auth for Okta if credentials are configured."""
+    okta_client_secret = os.environ.get("OKTA_CLIENT_SECRET")
+    if not okta_client_secret:
+        return None
+
+    from fastmcp.server.auth.oidc_proxy import OIDCProxy
+
+    okta_domain = os.environ.get("OKTA_DOMAIN", "https://integrator-9607059.okta.com")
+    okta_issuer = os.environ.get("OKTA_ISSUER", f"{okta_domain}/oauth2/default")
+    base_url = os.environ.get("MCP_BASE_URL", "https://rising-violet-emu.fastmcp.app/mcp")
+    jwt_signing_key = os.environ.get("JWT_SIGNING_KEY", "")
+
+    return OIDCProxy(
+        config_url=f"{okta_issuer}/.well-known/openid-configuration",
+        upstream_client_id=os.environ.get("OKTA_CLIENT_ID", "0oa117lpjfh5KAyzD698"),
+        upstream_client_secret=okta_client_secret,
+        base_url=base_url,
+        jwt_signing_key=jwt_signing_key or None,
+        allowed_client_redirect_uris=[
+            "http://localhost:*",
+            "http://127.0.0.1:*",
+            "https://claude.ai/*",
+        ],
+    )
+
+
 # Initialize MCP server
 mcp = FastMCP(
     "moon-d1-mcp",
     instructions="MCP server for exploring lunar selenography data. Use these tools to search, filter, and analyze features on the Moon's surface including craters, maria, mountains, and more.",
+    auth=_create_auth(),
 )
 
 # Add lunar selenography skill (database schema and query guidance)

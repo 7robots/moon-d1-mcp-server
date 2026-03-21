@@ -16,7 +16,13 @@
     "env": {
       "CLOUDFLARE_ID": "${CLOUDFLARE_ID}",
       "CLOUDFLARE_TOKEN": "${CLOUDFLARE_TOKEN}",
-      "DATABASE_ID": "${DATABASE_ID}"
+      "DATABASE_ID": "${DATABASE_ID}",
+      "OKTA_CLIENT_ID": "${OKTA_CLIENT_ID}",
+      "OKTA_CLIENT_SECRET": "${OKTA_CLIENT_SECRET}",
+      "OKTA_DOMAIN": "${OKTA_DOMAIN}",
+      "OKTA_ISSUER": "${OKTA_ISSUER}",
+      "JWT_SIGNING_KEY": "${JWT_SIGNING_KEY}",
+      "MCP_BASE_URL": "${MCP_BASE_URL}"
     }
   }
 }
