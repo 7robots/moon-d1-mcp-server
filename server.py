@@ -50,7 +50,7 @@ def _create_auth():
 
     okta_domain = os.environ.get("OKTA_DOMAIN", "https://integrator-9607059.okta.com")
     okta_issuer = os.environ.get("OKTA_ISSUER", f"{okta_domain}/oauth2/default")
-    base_url = os.environ.get("MCP_BASE_URL", "https://rising-violet-emu.fastmcp.app/mcp")
+    base_url = os.environ.get("MCP_BASE_URL", "https://rising-violet-emu.fastmcp.app")
     jwt_signing_key = os.environ.get("JWT_SIGNING_KEY", "")
 
     return OIDCProxy(
