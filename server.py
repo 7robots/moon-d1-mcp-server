@@ -44,6 +44,7 @@ mcp = FastMCP(
     instructions="MCP server for exploring lunar selenography data. Use these tools to search, filter, and analyze features on the Moon's surface including craters, maria, mountains, and more.",
     auth=create_okta_auth(
         client_storage=create_encrypted_storage("/data", app_name="moon-d1-mcp"),
+        enable_bearer_tokens=True,
     ),
 )
 
