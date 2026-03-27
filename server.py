@@ -37,25 +37,25 @@ def _get_d1_config():
     return api_url, cloudflare_token
 
 
-# ---------------------------------------------------------------------------
-# Okta OIDC authentication (optional — enabled when OKTA_CLIENT_SECRET is set)
-# ---------------------------------------------------------------------------
 def _create_auth():
-    """Build OIDCProxy auth for Okta if credentials are configured."""
+    """Build Okta OIDC auth with bearer token support, or None if not configured."""
     okta_client_secret = os.environ.get("OKTA_CLIENT_SECRET")
     if not okta_client_secret:
         return None
 
+    from fastmcp.server.auth import MultiAuth
     from fastmcp.server.auth.oidc_proxy import OIDCProxy
+    from fastmcp.server.auth.providers.introspection import IntrospectionTokenVerifier
 
+    okta_client_id = os.environ.get("OKTA_CLIENT_ID", "0oa117lpjfh5KAyzD698")
     okta_domain = os.environ.get("OKTA_DOMAIN", "https://integrator-9607059.okta.com")
     okta_issuer = os.environ.get("OKTA_ISSUER", f"{okta_domain}/oauth2/default")
     base_url = os.environ.get("MCP_BASE_URL", "https://rising-violet-emu.fastmcp.app/mcp")
     jwt_signing_key = os.environ.get("JWT_SIGNING_KEY", "")
 
-    return OIDCProxy(
+    oidc_proxy = OIDCProxy(
         config_url=f"{okta_issuer}/.well-known/openid-configuration",
-        client_id=os.environ.get("OKTA_CLIENT_ID", "0oa117lpjfh5KAyzD698"),
+        client_id=okta_client_id,
         client_secret=okta_client_secret,
         base_url=base_url,
         jwt_signing_key=jwt_signing_key or None,
@@ -66,6 +66,18 @@ def _create_auth():
             "http://127.0.0.1:*",
             "https://claude.ai/*",
         ],
+    )
+
+    introspection_verifier = IntrospectionTokenVerifier(
+        introspection_url=f"{okta_issuer}/v1/introspect",
+        client_id=okta_client_id,
+        client_secret=okta_client_secret,
+        cache_ttl_seconds=300,
+    )
+
+    return MultiAuth(
+        server=oidc_proxy,
+        verifiers=[introspection_verifier],
     )
 
 
