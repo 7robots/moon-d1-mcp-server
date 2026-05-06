@@ -37,13 +37,17 @@ def _get_d1_config():
     return api_url, cloudflare_token
 
 
-def _build_client_storage():
-    """Build encrypted Redis client_storage if REDIS_URL is set, else None.
+def _build_client_storage(prefix: str):
+    """Build encrypted, namespaced Redis client_storage if REDIS_URL is set, else None.
 
     OIDCProxy's default client_storage on Linux is MemoryStore, which is
     ephemeral. fastmcp.cloud scales containers to zero on idle, so without
     persistent storage every cold start wipes the JTI mapping and forces
     every user to re-authenticate.
+
+    The PrefixCollectionsWrapper namespaces this server's OAuth state in
+    Redis so the same database can be shared across multiple MCP servers
+    (necessary on the Redis Cloud free tier, which only provides one DB).
     """
     redis_url = os.environ.get("REDIS_URL")
     if not redis_url:
@@ -61,9 +65,13 @@ def _build_client_storage():
     from cryptography.fernet import Fernet
     from key_value.aio.stores.redis import RedisStore
     from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+    from key_value.aio.wrappers.prefix_collections import PrefixCollectionsWrapper
 
     return FernetEncryptionWrapper(
-        key_value=RedisStore(url=redis_url),
+        key_value=PrefixCollectionsWrapper(
+            key_value=RedisStore(url=redis_url),
+            prefix=prefix,
+        ),
         fernet=Fernet(encryption_key.encode()),
     )
 
@@ -97,7 +105,7 @@ def _create_auth():
             "http://127.0.0.1:*",
             "https://claude.ai/*",
         ],
-        client_storage=_build_client_storage(),
+        client_storage=_build_client_storage(prefix="moon-d1"),
     )
 
     introspection_verifier = IntrospectionTokenVerifier(
