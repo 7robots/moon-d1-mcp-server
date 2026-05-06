@@ -37,6 +37,37 @@ def _get_d1_config():
     return api_url, cloudflare_token
 
 
+def _build_client_storage():
+    """Build encrypted Redis client_storage if REDIS_URL is set, else None.
+
+    OIDCProxy's default client_storage on Linux is MemoryStore, which is
+    ephemeral. fastmcp.cloud scales containers to zero on idle, so without
+    persistent storage every cold start wipes the JTI mapping and forces
+    every user to re-authenticate.
+    """
+    redis_url = os.environ.get("REDIS_URL")
+    if not redis_url:
+        return None
+
+    encryption_key = os.environ.get("STORAGE_ENCRYPTION_KEY")
+    if not encryption_key:
+        raise ValueError(
+            "REDIS_URL is set but STORAGE_ENCRYPTION_KEY is missing. "
+            "Refusing to store OAuth tokens in Redis without encryption. "
+            "Generate a key with: python -c "
+            "'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+        )
+
+    from cryptography.fernet import Fernet
+    from key_value.aio.stores.redis import RedisStore
+    from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+
+    return FernetEncryptionWrapper(
+        key_value=RedisStore(url=redis_url),
+        fernet=Fernet(encryption_key.encode()),
+    )
+
+
 def _create_auth():
     """Build Okta OIDC auth with bearer token support, or None if not configured."""
     okta_client_secret = os.environ.get("OKTA_CLIENT_SECRET")
@@ -60,12 +91,13 @@ def _create_auth():
         base_url=base_url,
         jwt_signing_key=jwt_signing_key or None,
         enable_cimd=False,
-        extra_authorize_params={"scope": "openid profile email"},
+        extra_authorize_params={"scope": "openid profile email offline_access"},
         allowed_client_redirect_uris=[
             "http://localhost:*",
             "http://127.0.0.1:*",
             "https://claude.ai/*",
         ],
+        client_storage=_build_client_storage(),
     )
 
     introspection_verifier = IntrospectionTokenVerifier(
