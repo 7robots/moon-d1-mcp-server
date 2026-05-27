@@ -1,26 +1,28 @@
-"""MCP Server for Cloudflare D1 Selenography Database.
+"""
+MCP Server for Cloudflare D1 Selenography Database.
 
 This server provides tools to interact with a collection of lunar surface features
 (craters, maria, mountains, etc.) stored in a Cloudflare D1 database.
-
-Deployed to Modal — see modal_app.py. OAuth state persists in a named modal.Dict
-(see modal_storage.py) so cold-starts don't force re-authentication.
 """
 
 import json
 import os
 from enum import Enum
+
+from dotenv import load_dotenv
+
+load_dotenv()
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from fastmcp import FastMCP
 from fastmcp.server.providers.skills import SkillProvider
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _get_d1_config():
-    """Get D1 API configuration. Reads env vars at call time so Modal-injected secrets are visible."""
+    """Get D1 API configuration. Reads env vars at call time for deployment flexibility."""
     cloudflare_id = os.environ.get("CLOUDFLARE_ID", "")
     cloudflare_token = os.environ.get("CLOUDFLARE_TOKEN", "")
     database_id = os.environ.get("DATABASE_ID", "")
@@ -36,28 +38,38 @@ def _get_d1_config():
 
 
 def _build_client_storage(prefix: str):
-    """Build encrypted, namespaced modal.Dict client_storage, or None if not configured.
+    """Build encrypted, namespaced Redis client_storage if REDIS_URL is set, else None.
 
-    OIDCProxy's default client_storage on Linux is an in-memory store, which
-    is wiped whenever Modal scales the container to zero. Persisting OAuth
-    state in a named modal.Dict lets refresh tokens survive cold starts.
+    OIDCProxy's default client_storage on Linux is MemoryStore, which is
+    ephemeral. fastmcp.cloud scales containers to zero on idle, so without
+    persistent storage every cold start wipes the JTI mapping and forces
+    every user to re-authenticate.
+
+    The PrefixCollectionsWrapper namespaces this server's OAuth state in
+    Redis so the same database can be shared across multiple MCP servers
+    (necessary on the Redis Cloud free tier, which only provides one DB).
     """
-    encryption_key = os.environ.get("STORAGE_ENCRYPTION_KEY")
-    if not encryption_key:
-        # Local dev path: skip persistence, fall back to OIDCProxy's default in-memory store.
+    redis_url = os.environ.get("REDIS_URL")
+    if not redis_url:
         return None
 
+    encryption_key = os.environ.get("STORAGE_ENCRYPTION_KEY")
+    if not encryption_key:
+        raise ValueError(
+            "REDIS_URL is set but STORAGE_ENCRYPTION_KEY is missing. "
+            "Refusing to store OAuth tokens in Redis without encryption. "
+            "Generate a key with: python -c "
+            "'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+        )
+
     from cryptography.fernet import Fernet
+    from key_value.aio.stores.redis import RedisStore
     from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
     from key_value.aio.wrappers.prefix_collections import PrefixCollectionsWrapper
 
-    from modal_storage import ModalDictStore
-
-    dict_name = os.environ.get("OAUTH_DICT_NAME", "moon-d1-oauth-storage")
-
     return FernetEncryptionWrapper(
         key_value=PrefixCollectionsWrapper(
-            key_value=ModalDictStore(dict_name=dict_name),
+            key_value=RedisStore(url=redis_url),
             prefix=prefix,
         ),
         fernet=Fernet(encryption_key.encode()),
@@ -74,10 +86,10 @@ def _create_auth():
     from fastmcp.server.auth.oidc_proxy import OIDCProxy
     from fastmcp.server.auth.providers.introspection import IntrospectionTokenVerifier
 
-    okta_client_id = os.environ["OKTA_CLIENT_ID"]
-    okta_domain = os.environ["OKTA_DOMAIN"]
+    okta_client_id = os.environ.get("OKTA_CLIENT_ID", "0oa117lpjfh5KAyzD698")
+    okta_domain = os.environ.get("OKTA_DOMAIN", "https://integrator-9607059.okta.com")
     okta_issuer = os.environ.get("OKTA_ISSUER", f"{okta_domain}/oauth2/default")
-    base_url = os.environ["MCP_BASE_URL"]
+    base_url = os.environ.get("MCP_BASE_URL", "https://rising-violet-emu.fastmcp.app/mcp")
     jwt_signing_key = os.environ.get("JWT_SIGNING_KEY", "")
 
     oidc_proxy = OIDCProxy(
@@ -632,3 +644,10 @@ async def moon_get_stats(response_format: str = "json") -> str:
         return json.dumps(stats, indent=2)
     except Exception as e:
         return handle_api_error(e)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    app = mcp.http_app(transport="streamable-http", stateless_http=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
